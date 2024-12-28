@@ -1,4 +1,6 @@
-import { getAuth, signInWithPhoneNumber } from "firebase/auth";
+import { getAuth, signInWithPhoneNumber, RecaptchaVerifier } from "firebase/auth";
+import { initializeApp } from "firebase/app";
+import Swal from 'sweetalert2';
 
 // Firebase Configuration
 const firebaseConfig = {
@@ -10,41 +12,51 @@ const firebaseConfig = {
     appId: "1:176039023490:web:693f81466bd00a8767f59b",
     measurementId: "G-Y3TLQ3CKYJ"
 };
-firebase.initializeApp(firebaseConfig);
 
-// Initialize Firebase Auth
-const auth = getAuth();
+// Initialize Firebase
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
 
-// reCAPTCHA verifier setup
-window.recaptchaVerifier = new firebase.auth.RecaptchaVerifier('sendVerificationCode', {
-    size: 'invisible', // Use 'normal' to show reCAPTCHA
+// إعداد reCAPTCHA
+window.recaptchaVerifier = new RecaptchaVerifier('sendVerificationCode', {
+    size: 'invisible',
     callback: (response) => {
-        console.log('reCAPTCHA solved:', response); // On successful verification
+        console.log('reCAPTCHA solved:', response);
     },
     'expired-callback': () => {
-        console.error('reCAPTCHA expired'); // If reCAPTCHA expires
+        console.error('reCAPTCHA expired');
     }
-});
+}, auth);
 
-// Send Verification Code
+// إرسال رسالة تحقق عبر Twilio
 function sendVerificationCode() {
     const phoneNumber = document.getElementById('phone').value;
 
-    // Use reCAPTCHA verifier
-    const appVerifier = window.recaptchaVerifier;
-
-    signInWithPhoneNumber(auth, phoneNumber, appVerifier)
-        .then((confirmationResult) => {
-            // Store confirmation result for later use
-            window.confirmationResult = confirmationResult;
-            Swal.fire('Code Sent', 'A verification code has been sent to your phone.', 'success');
+    // إرسال طلب HTTP POST إلى دالة Firebase لإرسال رسالة Twilio
+    fetch('https://[YOUR_REGION].firebaseapp.com/sendTwilioSMS', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+            phoneNumber: phoneNumber,
+            message: 'Ahoy 👋'  // الرسالة التي سيتم إرسالها
         })
-        .catch((error) => {
-            Swal.fire('Error', error.message, 'error');
-        });
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            Swal.fire('Code Sent', 'A verification code has been sent to your phone.', 'success');
+        } else {
+            Swal.fire('Error', data.error, 'error');
+        }
+    })
+    .catch(error => {
+        Swal.fire('Error', 'Failed to send SMS.', 'error');
+    });
 }
 
-// Verify Code and Sign Up
+// التحقق من رمز التحقق وإنشاء الحساب
 function verifyCodeAndSignUp() {
     const code = document.getElementById('verificationCode').value;
 
@@ -52,7 +64,6 @@ function verifyCodeAndSignUp() {
         .then((result) => {
             const user = result.user;
 
-            // Optionally link with email-password or update profile
             const email = document.getElementById('email').value;
             const password = document.getElementById('password').value;
             const username = document.getElementById('username').value;
@@ -64,17 +75,17 @@ function verifyCodeAndSignUp() {
         .catch(() => Swal.fire('Invalid Code', 'The verification code is incorrect.', 'error'));
 }
 
-// Login with Email and Password
+// تسجيل الدخول باستخدام البريد الإلكتروني وكلمة المرور
 function login() {
     const email = document.getElementById('email').value;
     const password = document.getElementById('password').value;
 
-    firebase.auth().signInWithEmailAndPassword(email, password)
+    signInWithEmailAndPassword(auth, email, password)
         .then(() => Swal.fire('Welcome!', 'Login Successful!', 'success'))
         .catch((error) => Swal.fire('Error', error.message, 'error'));
 }
 
-// Login with Phone
+// تسجيل الدخول باستخدام الهاتف
 function loginWithPhone() {
     const phoneNumber = document.getElementById('loginPhone').value;
     const appVerifier = window.recaptchaVerifier;
